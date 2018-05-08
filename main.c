@@ -1,5 +1,6 @@
 #include <c8051f330.h>
 #include <stdio.h>
+#include <String.h>
 
 #define SYSCLK 24500000
 #define BAUDRATE 115200
@@ -12,7 +13,7 @@ unsigned char sendBuffer[20] = {0}, recvBuffer[20] = {0};
 void portInit(void);
 void uartInit(void);
 void SYSCLK_Init(void);
-bool uartPutDataQueue(unsigned char);
+int uartPutDataQueue(unsigned char);
 void uartSendData(void);
 
 void main()
@@ -25,10 +26,12 @@ void main()
     portInit(); 
     uartInit();
     LED = 0;   
+		uartPutDataQueue('a');
+		uartSendData();
     while(1)
     {
-        if (uartRecvCount == 8 ) 
-            if (strcmp(uartData, recvBuffer)) LED = 1;
+        if (uartRecvCount == 3 ) 
+            if (strcmp("a\r\n", recvBuffer) == 0) LED = 1; //AT\r\nOK\r\n
         
     }
 }
@@ -86,13 +89,13 @@ void uart0_ISR(void) interrupt 4
     }
 }
 
-bool uartPutDataQueue(unsigned char buf)
+int uartPutDataQueue(unsigned char buf)
 {
-    if (uartDataBufIndex >= sizeof(sendBuffer)) return false; /* sendBuffer full */
+    if (uartDataBufIndex >= sizeof(sendBuffer)) return 1; /* sendBuffer full */
     sendBuffer[uartDataBufIndex] = buf;
     uartDataBufIndex++;
     uartDataQueuing++;
-    return true;
+    return 0;
 }
 
 void uartSendData(void)
