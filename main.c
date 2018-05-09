@@ -4,47 +4,47 @@
 
 #define SYSCLK 24500000
 #define BAUDRATE 115200
-#define TM1VAL(baudrate)  (256 - (3062500 / baudrate )) /* baudrate calculator, assuming SYSCLK is divided by 4 */
+#define TM1VAL(baudrate)  ((unsigned int)(256 - (3062500 / baudrate ))) % 1 == 0 ?  ((unsigned int)(256 - (3062500 / baudrate ))) : ((unsigned int)((256 - (3062500 / baudrate ))) - 1)/* baudrate calculator, assuming SYSCLK is divided by 4 */
 
 sbit LED = P1^3;
-unsigned int uartDataIndex, uartDataQueuing, uartDataBufIndex, uartRecvDataBufIndex, uartRecvCount;
+unsigned long debug = 0;
+unsigned int uartDataIndex = 0, uartDataQueuing = 0, uartDataBufIndex = 0, uartRecvDataBufIndex = 0, uartRecvCount = 0;
 unsigned char uartData[] = "AT\r\n";
 unsigned char sendBuffer[20] = {0}, recvBuffer[20] = {0};
 void portInit(void);
 void uartInit(void);
-void SYSCLK_Init(void);
+void sysclk_Init(void);
 int uartPutDataQueue(unsigned char);
 void uartSendData(void);
 
-void main()
+void main(void)
 {
-    uartDataIndex = 0;
-    uartDataBufIndex = 0;
-    uartDataQueuing = 0;
-    uartRecvDataBufIndex = 0;
-    uartRecvCount = 0;
+    sysclk_Init();
     portInit(); 
     uartInit();
-    LED = 0;   
+		EA = 1;
+    LED = 1;   
 		uartPutDataQueue('a');
 		uartSendData();
+		debug++;
     while(1)
     {
         if (uartRecvCount == 3 ) 
-            if (strcmp("a\r\n", recvBuffer) == 0) LED = 1; //AT\r\nOK\r\n
+            if (strcmp("a\r\n", recvBuffer) == 0) LED = 0; //AT\r\nOK\r\n
         
     }
 }
 
-void portInit()
+void portInit(void)
 {
+    PCA0MD &= ~0x40;  /* disable watchdog */
    	XBR0 = 0x01;
    	XBR1 = 0x42;
     P0MDIN	|= 0x20; /* uart RX */
     P1MDOUT |= 0x08;
 }
 
-void uartInit()
+void uartInit(void)
 {
    	SCON0 = 0x10;
     TH1 = TM1VAL(BAUDRATE);
@@ -54,38 +54,37 @@ void uartInit()
     TMOD &= ~0xF0;
 	TMOD |=  0x20;
     TR1 = 1;
-    ES0 = 1; // uart0 interrupt enabled
-    //TI0 = 1; UART TX INT flag (testing if ignored)
+		PS0 = 1; // uart0 interrupt priority set to high
+   //ES0 = 1; // uart0 interrupt enabled
+    //TI0 = 1; //UART TX INT flag (testing if ignored)
 }
 
-void SYSCLK_Init (void)
+void sysclk_Init (void)
 {
 	OSCICN = 0x83;                  // Configure internal oscillator for its maximum frequency
 	RSTSRC  = 0x04;                 // Enable missing clock detector
 }
 
-void uart0_ISR(void) interrupt 4
+void UART0_ISR(void) interrupt 4
 {
+            debug++;
     if (TI0)
     {
         TI0 = 0;
-        if (uartDataIndex < sizeof(uartData))
+        if (uartDataQueuing > 0)
         {
-            SBUF0 = uartData[uartDataIndex++];
+            SBUF0 = sendBuffer[uartDataIndex++];
             if (uartDataIndex == sizeof(uartData)) uartDataIndex = 0;
             uartDataQueuing--;
         }
+
     }
     if (RI0)
     {
         RI0 = 0;
-        if (uartRecvDataBufIndex < sizeof(recvBuffer))
-        {
             recvBuffer[uartRecvDataBufIndex] = SBUF0;
             if (uartRecvDataBufIndex == sizeof(recvBuffer)) uartRecvDataBufIndex = 0; 
             uartRecvCount++;
-        }
-
     }
 }
 
@@ -102,8 +101,10 @@ void uartSendData(void)
 {
     if (uartDataQueuing > 0)
     {
+				
+			  uartDataQueuing--;
         SBUF0 = sendBuffer[uartDataIndex++];
         if (uartDataIndex == sizeof(uartData)) uartDataIndex = 0;
-        uartDataQueuing--;
+       TI0 = 1;
     }
 }
