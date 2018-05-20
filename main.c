@@ -4,10 +4,11 @@
 
 #define SYSCLK 24500000
 #define BAUDRATE 115200
-#define TM1VAL(baudrate)  ((unsigned int)(256 - (3062500 / baudrate ))) % 1 == 0 ?  ((unsigned int)(256 - (3062500 / baudrate ))) : ((unsigned int)((256 - (3062500 / baudrate ))) - 1)/* baudrate calculator, assuming SYSCLK is divided by 4 */
+#define TM1VAL(baudrate)  ((unsigned int)(256 - (3062500 / baudrate ))) % 1 == 0 ?  \
+													((unsigned int)(256 - (3062500 / baudrate ))) : ((unsigned int)((256 - (3062500 / baudrate ))) - 1)/* baudrate calculator, assuming SYSCLK is divided by 4 */
 
 sbit LED = P1^3;
-unsigned long debug = 0;
+unsigned long debug = 0, delay = 100000000;
 unsigned int uartDataIndex = 0, uartDataQueuing = 0, uartDataBufIndex = 0, uartRecvDataBufIndex = 0, uartRecvCount = 0;
 unsigned char uartData[] = "AT\r\n";
 unsigned char sendBuffer[20] = {0}, recvBuffer[20] = {0};
@@ -22,16 +23,22 @@ void main(void)
     sysclk_Init();
     portInit(); 
     uartInit();
+		//ET1 = 0; // interrupt for timer1
+		//ET0 = 0; // timer0
+		//EX1 = 0;// INT1
 		EA = 1;
-    LED = 1;   
-		uartPutDataQueue('a');
+    LED = 0;   
+		uartPutDataQueue('A');
+		uartPutDataQueue('T');
+		uartPutDataQueue('\r');
+		uartPutDataQueue('\n');
 		uartSendData();
-		debug++;
     while(1)
     {
-        if (uartRecvCount == 3 ) 
-            if (strcmp("a\r\n", recvBuffer) == 0) LED = 0; //AT\r\nOK\r\n
-        
+			if (uartRecvCount == 4 && strcmp(recvBuffer, "OK\r\n"))
+			{
+				LED = 1;
+			}
     }
 }
 
@@ -53,10 +60,11 @@ void uartInit(void)
     TL1 = TH1;
     TMOD &= ~0xF0;
 	TMOD |=  0x20;
-    TR1 = 1;
-		PS0 = 1; // uart0 interrupt priority set to high
-   //ES0 = 1; // uart0 interrupt enabled
-    //TI0 = 1; //UART TX INT flag (testing if ignored)
+    TR1 = 1; // timer1 enabled for uart functionality
+		//PS0 = 1; // uart0 interrupt priority set to high
+   ES0 = 1; // uart0 interrupt enabled
+    TI0 = 0; //UART TX INT flag (testing if ignored)
+	
 }
 
 void sysclk_Init (void)
@@ -67,7 +75,7 @@ void sysclk_Init (void)
 
 void UART0_ISR(void) interrupt 4
 {
-            debug++;
+    debug++;
     if (TI0)
     {
         TI0 = 0;
@@ -81,7 +89,7 @@ void UART0_ISR(void) interrupt 4
     }
     if (RI0)
     {
-        RI0 = 0;
+						RI0 = 0;
             recvBuffer[uartRecvDataBufIndex] = SBUF0;
             if (uartRecvDataBufIndex == sizeof(recvBuffer)) uartRecvDataBufIndex = 0; 
             uartRecvCount++;
